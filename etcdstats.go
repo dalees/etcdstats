@@ -12,17 +12,18 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"k8s.io/kubernetes/pkg/client/restclient"
-	knet "k8s.io/kubernetes/pkg/util/net"
+	knet "k8s.io/apimachinery/pkg/util/net"
+	restclient "k8s.io/client-go/rest"
 
 	"golang.org/x/net/context"
 
-	"github.com/coreos/etcd/client"
+	etcdclient "github.com/coreos/etcd/client"
+	//configapi "github.com/openshift/origin/pkg/cmd/server/api"
 )
 
-// borrowed from
-// https://github.com/openshift/origin/blob/bfa9bb91c15d3c3f1b671b98939cf8f1e911d8a7/pkg/cmd/server/etcd/etcd.go#L68-L99
-func makeEtcdClient(server, cacert, cert, key string) (client.Client, error) {
+// From: https://github.com/openshift/origin/blob/master/pkg/cmd/server/etcd/etcd.go#L45
+// MakeEtcdClient creates an etcd client based on the provided config.
+func MakeEtcdClient(server, cacert, cert, key string) (etcdclient.Client, error) {
 	tlsConfig, err := restclient.TLSConfigFor(&restclient.Config{
 		TLSClientConfig: restclient.TLSClientConfig{
 			CertFile: cert,
@@ -46,13 +47,14 @@ func makeEtcdClient(server, cacert, cert, key string) (client.Client, error) {
 		MaxIdleConnsPerHost: 500,
 	})
 
-	cfg := client.Config{
+	cfg := etcdclient.Config{
 		Endpoints: []string{server},
+		// TODO: Determine if transport needs optimization
 		Transport: transport,
 	}
-	return client.New(cfg)
-
+	return etcdclient.New(cfg)
 }
+
 
 type multiValueFlag []string
 
@@ -90,12 +92,12 @@ func main() {
 		log.Fatal("--server is required")
 	}
 
-	c, err := makeEtcdClient(server, cacert, cert, key)
+	c, err := MakeEtcdClient(server, cacert, cert, key)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	kapi := client.NewKeysAPI(c)
+	kapi := etcdclient.NewKeysAPI(c)
 	s := stats{
 		client: c,
 		keys:   kapi,
@@ -144,8 +146,8 @@ Outer:
 }
 
 type stats struct {
-	client client.Client
-	keys   client.KeysAPI
+	client etcdclient.Client
+	keys   etcdclient.KeysAPI
 	seen   map[string]*nodeinfo
 	list   []*nodeinfo
 }
@@ -158,7 +160,7 @@ type nodeinfo struct {
 }
 
 func (s *stats) examineNode(key string) error {
-	resp, err := s.keys.Get(context.Background(), key, &client.GetOptions{})
+	resp, err := s.keys.Get(context.Background(), key, &etcdclient.GetOptions{})
 	if err != nil {
 		return err
 	}
